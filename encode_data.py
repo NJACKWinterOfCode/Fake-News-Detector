@@ -18,6 +18,7 @@ nlp = spacy.load('en_core_web_sm')
 punctuations = string.punctuation
 def cleanup_text(docs, logging=False):
     texts = []
+    full_tokens = []
     counter = 1
     for doc in docs:
         if counter % 1000 == 0 and logging:
@@ -26,12 +27,21 @@ def cleanup_text(docs, logging=False):
         pr.set_options(pr.OPT.URL, pr.OPT.EMOJI, pr.OPT.HASHTAG, pr.OPT.MENTION, pr.OPT.RESERVED, pr.OPT.SMILEY, pr.OPT.NUMBER)
         doc = pr.clean(doc)
         doc = con.fix(doc)
+        doc = ''.join(ch for ch in doc if ord(ch)<128)
         doc = nlp(doc, disable=['parser', 'ner'])
         tokens = [tok.lemma_.lower().strip() for tok in doc if tok.lemma_ != '-PRON-']
         tokens = [tok for tok in tokens if tok not in stopwords and tok not in punctuations and re.sub("[0-9]*",'',tok) != '']
+        full_tokens += tokens
         tokens = ' '.join(tokens)
-        texts.append(tokens)
-    return pd.Series(texts)
+        texts.append(tokens)    
+    rare_tuple = nltk.FreqDist(full_tokens).most_common()[-50:]
+    rare_words = [tup[0] for tup in rare_tuple]
+    final_texts = []
+    for text in texts:
+        tokens = [tok for tok in text.split(' ') if tok not in rare_words]
+        tokens = ' '.join(tokens)
+        final_texts.append(tokens)
+    return pd.Series(final_texts)
  
 news = df.text
 news_clean = cleanup_text(news)
@@ -55,7 +65,7 @@ def encode(text_list):
 
 from keras.preprocessing.sequence import pad_sequences
 news_clean_encoded = encode(news_clean)
-news_clean_encoded = pad_sequences(news_clean_encoded, len(max(news_clean_encoded,
+news_clean_encoded = pad_sequences(news_clean_encoded, maxlen = len(max(news_clean_encoded,
                                                                            key = len)))
 
 title_clean_encoded = encode(title_clean)
